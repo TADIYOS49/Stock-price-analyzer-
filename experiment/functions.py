@@ -1,10 +1,12 @@
 
 from helper import *
 from datetime import datetime, timedelta
-def get_stock_price(symbol):
+def get_stock_price(symbol: str) -> str:
     ticker = yf.Ticker(symbol)
     todays_data = ticker.history(period="1d")
-    return round(todays_data["Close"][0], 2)
+    if todays_data.empty:
+        return None
+    return round(todays_data["Close"].iloc[0], 2)
 
 def get_price_change_percent(symbol, days_ago):
     ticker = yf.Ticker(symbol)
