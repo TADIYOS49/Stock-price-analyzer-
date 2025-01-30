@@ -20,10 +20,13 @@ from models import StockPriceTool, StockPercentageChangeTool, StockGetBestPerfor
 from functions import get_best_performing,get_price_change_percent, get_stock_price
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
+import json
 
 from langchain.memory import ConversationBufferMemory
 from langchain.agents import *
 from langchain import LLMChain
+
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 
 load_dotenv()
