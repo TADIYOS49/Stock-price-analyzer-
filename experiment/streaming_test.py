@@ -1,67 +1,109 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from starlette.responses import StreamingResponse
-from typing import List
-from openai import OpenAI
-from helper import *
-import logging
-import json
-import uvicorn
+import os
 import asyncio
+from typing import Any
 
-logging.basicConfig(level=logging.DEBUG)  # Set to DEBUG to see detailed logs
+import uvicorn
+from fastapi import FastAPI, Body
+from fastapi.responses import StreamingResponse
+from queue import Queue
+from pydantic import BaseModel
+
+from langchain.agents import AgentType, initialize_agent
+from langchain.chat_models import ChatOpenAI
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.callbacks.streaming_aiter import AsyncIteratorCallbackHandler
+from langchain.callbacks.streaming_stdout_final_only import FinalStreamingStdOutCallbackHandler
+from langchain.schema import LLMResult
+from helper import * 
+
 
 app = FastAPI()
 
-class Message(BaseModel):
-    role: str
-    content: str
+#initialize the agent (we need to do this for the callbacks)
+llm = ChatOpenAI(
+    openai_api_key=api_key,
+    temperature=0.0,
+    model_name="gpt-4o",
+    streaming=True,  # ! important
+    callbacks=[]  # ! important (but we will add them later)
+)
+memory = ConversationBufferWindowMemory(
+    memory_key="chat_history",
+    k=5,
+    return_messages=True,
+    output_key="output"
+)
+agent = initialize_agent(
+    agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+    tools=[StockPriceTool(),StockGetBestPerformingTool(),StockPercentageChangeTool()],
+    llm=llm,
+    verbose=True,
+    max_iterations=3,
+    early_stopping_method="generate",
+    memory=memory,
+    return_intermediate_steps=False
+)
 
-class InferenceRequest(BaseModel):
-    model: str = GPT4
-    messages: List[Message]
-    stream: bool
+class AsyncCallbackHandler(AsyncIteratorCallbackHandler):
+    content: str = ""
+    final_answer: bool = False
+    
+    def __init__(self) -> None:
+        super().__init__()
 
-client = OpenAI(api_key=api_key)  # Replace with your actual OpenAI API key
+    async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        self.content += token
+        # if we passed the final answer, we put tokens in queue
+        if self.final_answer:
+            if '"action_input": "' in self.content:
+                if token not in ['"', "}"]:
+                    self.queue.put_nowait(token)
+        elif "Final Answer" in self.content:
+            self.final_answer = True
+            self.content = ""
+    
+    async def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        if self.final_answer:
+            self.content = ""
+            self.final_answer = False
+            self.done.set()
+        else:
+            self.content = ""
 
-@app.post("/openai_streaming")
-async def openai_streaming(request: InferenceRequest):
-    try:
-        completion = client.chat.completions.create(
-            model=request.model,
-            messages=[{"role": msg.role, "content": msg.content} for msg in request.messages],
-            stream=True
-        )
+async def run_call(query: str, stream_it: AsyncCallbackHandler):
+    # assign callback handler
+    agent.agent.llm_chain.llm.callbacks = [stream_it]
+    # now query
+    await agent.acall(inputs={"input":query})
 
-        async def async_generator():
-            for chunk in completion:
-                logging.debug(f"Received chunk: {chunk}")
-                
-                response_data = {
-                    "id": chunk.id,
-                    "object": chunk.object,
-                    "created": chunk.created,
-                    "model": chunk.model,
-                    "system_fingerprint": chunk.system_fingerprint,
-                    "choices": [
-                        {
-                            "index": chunk.choices[0].index,
-                            "delta": {
-                                "content": getattr(chunk.choices[0].delta, 'content', None)
-                            },
-                            "finish_reason": chunk.choices[0].finish_reason
-                        }
-                    ]
-                }
-                
-                await asyncio.sleep(0)
-                yield f"{json.dumps(response_data['choices'][0]['delta'].get("content",None))}"
+# request input format
+class Query(BaseModel):
+    text: str
 
-        return StreamingResponse(async_generator(), media_type="text/event-stream")
+async def create_gen(query: str, stream_it: AsyncCallbackHandler):
+    task = asyncio.create_task(run_call(query, stream_it))
+    async for token in stream_it.aiter(): 
+        yield token
+    await task
 
-    except Exception as e:
-        logging.error(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/chat")
+async def chat(
+    query: Query = Body(...),
+):
+    stream_it = AsyncCallbackHandler()
+    gen = create_gen(query.text, stream_it)
+    return StreamingResponse(gen, media_type="text/event-stream")
+
+@app.get("/health")
+async def health():
+    """Check the api is running"""
+    return {"status": "🤙"}
+    
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        "app:app",
+        host="localhost",
+        port=8000,
+        reload=True
+    )

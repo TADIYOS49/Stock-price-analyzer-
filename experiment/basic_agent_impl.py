@@ -11,7 +11,7 @@ model = ChatOpenAI(model=GPT4, streaming = True, temperature=0) #to enable strea
 
 #This one is for an agent that will not remember previous conversations
 open_ai_agent = initialize_agent (
-    tools, model, agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True,
+    tools, model, agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True, return_intermediate_steps = False,
     agent_kwargs= {
         "memory_prompts": [chat_history],
         "input_variables": ["input", "agent_scratchpad", "chat_history"]

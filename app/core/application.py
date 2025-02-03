@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 
-from api.endpoints import hello_route, chat_agent
+
+from app.api.endpoints import hello_route, chat_agent
+
+
 
 def create_api():
 
