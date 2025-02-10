@@ -21,10 +21,9 @@ Welcome to the Stock Price Analyzer! This project leverages OpenAI's Large Langu
 The project's folder structure is organized as follows:
 
 - **app/**: Contains the main application code.
-- **experiment/**: Includes experimental scripts and notebooks.
+- **experiment/**: Includes experimental scripts and notebooks. There are still more improvements and other modifications that can be applied like better memory management, streaming output, and other guardrails you can have. 
 - **.gitignore**: Specifies files and directories to be ignored by Git.
 
-For a detailed view of the folder structure and codebase, please visit the [GitHub repository](https://github.com/TADIYOS49/Stock-price-analyzer-).
 
 ## Getting Started
 
@@ -51,7 +50,7 @@ To set up and run the project locally:
 
 ## Usage
 
-Once the server is running, you can interact with the application using natural language queries to retrieve stock information, analyze historical data, and compare stock performances.
+Once the server runs, you can interact with the application using natural language queries to retrieve stock information, analyze historical data, and compare stock performances. ( Utilize Swagger for ease )
 
 ## Contributing
 
